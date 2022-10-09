@@ -32,7 +32,7 @@ mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int
 batch_size = 64
 epochs = 15
 lr = 1e-3
-repetitions = 
+repetitions = 100
 
 train_loader = torch.utils.data.DataLoader(mnist_train,batch_size=batch_size, shuffle=True)
 val_loader = torch.utils.data.DataLoader(mnist_val,batch_size=batch_size)
