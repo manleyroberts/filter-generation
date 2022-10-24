@@ -10,6 +10,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import random_split
 import os
 from uuid import uuid4
+from scipy.special import logsumexp
 
 import numpy as np
 from datetime import datetime
@@ -57,15 +58,12 @@ test_loader = torch.utils.data.DataLoader(mnist_test,batch_size=batch_size, shuf
 
 import pickle
 
-lr = 1e-2
+lr = 1e-1
+# tol = 1e-9
 repetitions = 25
 
 count_linear_layer_map = {
-    16: 2304,
-    32: 2304,
-    64: 2304,
-    128: 2304,
-    256: 2304,
+    c: 144*c for c in [16, 32, 64, 128, 256, 512, 1024]
 }
 
 
@@ -108,7 +106,7 @@ for repetition in range(repetitions):
             nn.Conv2d(1, count, kernel_size=5, stride=2, bias=False),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(2304, 10)
+            nn.Linear(count_linear_layer_map[count], 10)
         ).to(device)
 
         with torch.no_grad():
@@ -123,6 +121,7 @@ for repetition in range(repetitions):
 
         net.train()
         val_losses = []
+        val_accs = []
         epoch = 0
         while True:
             
@@ -131,7 +130,7 @@ for repetition in range(repetitions):
                 layer.requires_grad = False
             net[3].requires_grad = True
             print(f'Repetition {repetition+1} of {repetitions}, Count of filters {count}, Epoch {epoch+1} , {datetime.now() - start_training}')
-            print(val_losses[-10:])
+            # print(val_losses[-10:])
             for batch_idx, (data, target) in enumerate(train_loader):
                 data, target = data.to(device), target.to(device)
                 optimizer.zero_grad()
@@ -141,7 +140,7 @@ for repetition in range(repetitions):
                 optimizer.step()
 
             net.eval()
-            num_correct, num_all, val_loss = 0, 0, 0
+            num_correct, num_all, val_loss_l, val_acc = 0, 0, [], 0
             with torch.no_grad():
                 for batch_idx, (data, target) in enumerate(val_loader):
                     data, target = data.to(device), target.to(device)
@@ -149,11 +148,14 @@ for repetition in range(repetitions):
                     preds = output.argmax(dim=1)
                     num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
                     num_all += len(target)
-                    val_loss += F.nll_loss(output, target)
+                    val_loss_l.append(F.nll_loss(output, target).cpu().numpy())
 
-            val_losses.append(val_loss)
+            val_accs.append(num_correct/num_all)
+            val_losses.append(logsumexp(val_loss_l))
 
-            if len(val_losses)>=2 and val_losses[-1] > val_losses[-2]:
+            print(val_accs[-10:])
+
+            if len(val_losses)>=25:
                 print(len(val_losses))
                 break
             epoch += 1
@@ -173,6 +175,7 @@ for repetition in range(repetitions):
                 test_loss += F.nll_loss(output, target)
 
         acc = num_correct / num_all
+        print(acc)
         test_loss = test_loss / num_all
         baseline_performances[f'sample_filters_IID_{count}']['acc'].append(acc)
         baseline_performances[f'sample_filters_IID_{count}']['loss'].append(test_loss)
