@@ -1,7 +1,7 @@
-# https://github.com/pytorch/examples/blob/main/mnist/main.py
-
+# Training params
 from random import shuffle
 import uuid
+import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,6 +14,9 @@ from scipy.special import logsumexp
 
 import numpy as np
 from datetime import datetime
+
+datapath = os.path.join('..', 'data')
+filterpath = os.path.join(datapath, 'filters')
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
@@ -30,75 +33,38 @@ mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int
 mnist_test = datasets.MNIST('../../data', train=False,
                     transform=mnist_transform)
 
-
-
 baseline_sample_counts = [16, 32, 64, 128, 256]
-
 baseline_performances = {
-    'sample_IID': {
+    'random': {
         'acc': [],
         'loss': []
     }
 }
 for count in baseline_sample_counts:
-    baseline_performances[f'sample_filters_IID_{count}'] = {}
-    baseline_performances[f'sample_filters_IID_{count}']['acc'] = []
-    baseline_performances[f'sample_filters_IID_{count}']['loss'] = []
+    baseline_performances[f'random_{count}'] = {}
+    baseline_performances[f'random_{count}']['acc'] = []
+    baseline_performances[f'random_{count}']['loss'] = []
 
-uuids = os.listdir('../../filters')
-
+uuids = os.listdir(filterpath)
 
 batch_size = 64
 train_loader = torch.utils.data.DataLoader(mnist_train,batch_size=batch_size, shuffle=True)
 val_loader = torch.utils.data.DataLoader(mnist_val,batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(mnist_test,batch_size=batch_size, shuffle=True)
 
-
-# Training params
-
-import pickle
-
 lr = 1e-1
-# tol = 1e-9
 repetitions = 25
 
 count_linear_layer_map = {
-    c: 144*c for c in [16, 32, 64, 128, 256, 512, 1024]
+    16: 2304*(16//16),
+    32: 2304*(32//16),
+    64: 2304*(64//16),
+    128: 2304*(128//16),
+    256: 2304*(256//16),
 }
-
 
 start_training = datetime.now()
 for repetition in range(repetitions):
-
-    # Sample full baseline
-    uuid = np.random.choice(uuids, replace=True)
-
-    net = nn.Sequential(
-        nn.Conv2d(1, 16, kernel_size=5, stride=2, bias=False),
-        nn.ReLU(),
-        nn.Flatten(),
-        nn.Linear(2304, 10)
-    ).to(device)
-
-    net.load_state_dict(torch.load(f'../../filters/{uuid}'))
-
-    net.eval()
-    num_correct, num_all, test_loss = 0, 0, 0
-    with torch.no_grad():
-        for batch_idx, (data, target) in enumerate(test_loader):
-            data, target = data.to(device), target.to(device)
-            output = net(data)
-            preds = output.argmax(dim=1)
-            num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
-            num_all += len(target)
-            test_loss += F.nll_loss(output, target)
-
-    acc = num_correct / num_all
-    test_loss = test_loss / num_all
-    baseline_performances['sample_IID']['acc'].append(acc)
-    baseline_performances['sample_IID']['loss'].append(test_loss)
-    print(repetition+1, 'full', acc)
-
     for count in baseline_sample_counts:
         # Sample full baseline
 
@@ -111,9 +77,7 @@ for repetition in range(repetitions):
 
         with torch.no_grad():
             for c in range(count):
-                uuid = np.random.choice(uuids, replace=True)
-                filter_choice_i = np.random.choice(16)
-                net[0].weight[c,:,:,:] = torch.load(f'../../filters/{uuid}')['0.weight'][filter_choice_i]
+                net[0].weight[c,:,:,:] =  torch.randn(5, 5).to(device)
 
         optimizer = optim.Adadelta(net.parameters(), lr=lr)
 
@@ -124,13 +88,12 @@ for repetition in range(repetitions):
         val_accs = []
         epoch = 0
         while True:
-            
             net.train()
             for layer in net[0:3]:
                 layer.requires_grad = False
             net[3].requires_grad = True
             print(f'Repetition {repetition+1} of {repetitions}, Count of filters {count}, Epoch {epoch+1} , {datetime.now() - start_training}')
-            # print(val_losses[-10:])
+
             for batch_idx, (data, target) in enumerate(train_loader):
                 data, target = data.to(device), target.to(device)
                 optimizer.zero_grad()
@@ -153,11 +116,13 @@ for repetition in range(repetitions):
             val_accs.append(num_correct/num_all)
             val_losses.append(logsumexp(val_loss_l))
 
-            print(val_accs[-10:])
-
-            if len(val_losses)>=25:
+            if len(val_losses)>=2:
+                print("(", val_losses[-1], "<-", val_losses[-2], ")")
+            if len(val_losses)>=2 and val_losses[-1] > val_losses[-2]:
                 print(len(val_losses))
                 break
+            if epoch > 25:
+              break
             epoch += 1
 
 
@@ -175,10 +140,9 @@ for repetition in range(repetitions):
                 test_loss += F.nll_loss(output, target)
 
         acc = num_correct / num_all
-        print(acc)
         test_loss = test_loss / num_all
-        baseline_performances[f'sample_filters_IID_{count}']['acc'].append(acc)
-        baseline_performances[f'sample_filters_IID_{count}']['loss'].append(test_loss)
-
-        with open('save_baselines.pickle', 'wb') as handle:
+        baseline_performances[f'random_{count}']['acc'].append(acc)
+        baseline_performances[f'random_{count}']['loss'].append(test_loss)
+        print("RESULT", count, acc)
+        with open(os.path.join(datapath, 'save_baselines_random_file.pickle'), 'wb') as handle:
             pickle.dump(baseline_performances, handle, protocol=pickle.HIGHEST_PROTOCOL)
