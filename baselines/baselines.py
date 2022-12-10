@@ -60,7 +60,7 @@ import pickle
 
 lr = 1e-1
 # tol = 1e-9
-repetitions = 25
+repetitions = 15
 
 count_linear_layer_map = {
     c: 144*c for c in [16, 32, 64, 128, 256, 512, 1024]
@@ -82,6 +82,50 @@ for repetition in range(repetitions):
 
     net.load_state_dict(torch.load(f'../../filters/{uuid}'))
 
+    val_losses = []
+    # val_accs = []
+    epoch = 0
+    while True:
+        
+        net.train()
+        for layer in net[0:3]:
+            layer.requires_grad = False
+        net[3].requires_grad = True
+
+        optimizer = optim.Adadelta(net.parameters(), lr=lr)
+
+        print(f'Repetition {repetition+1} of {repetitions}, Epoch {epoch+1} , {datetime.now() - start_training}')
+        # print(val_losses[-10:])
+        for batch_idx, (data, target) in enumerate(train_loader):
+            data, target = data.to(device), target.to(device)
+            optimizer.zero_grad()
+            output = net(data)
+            loss = F.nll_loss(output, target)
+            loss.backward()
+            optimizer.step()
+
+        # net.eval()
+        # num_correct, num_all, val_loss_l, val_acc = 0, 0, [], 0
+        # with torch.no_grad():
+        #     for batch_idx, (data, target) in enumerate(val_loader):
+        #         data, target = data.to(device), target.to(device)
+        #         output = net(data)
+        #         preds = output.argmax(dim=1)
+        #         num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
+        #         num_all += len(target)
+        #         val_loss_l.append(F.nll_loss(output, target).cpu().numpy())
+
+        # val_accs.append(num_correct/num_all)
+        val_losses.append(0)
+
+        # print(val_accs[-10:])
+
+        if len(val_losses)>=25:
+            print(len(val_losses))
+            break
+        epoch += 1
+
+
     net.eval()
     num_correct, num_all, test_loss = 0, 0, 0
     with torch.no_grad():
@@ -99,86 +143,86 @@ for repetition in range(repetitions):
     baseline_performances['sample_IID']['loss'].append(test_loss)
     print(repetition+1, 'full', acc)
 
-    for count in baseline_sample_counts:
-        # Sample full baseline
+    # for count in baseline_sample_counts:
+    #     # Sample full baseline
 
-        net = nn.Sequential(
-            nn.Conv2d(1, count, kernel_size=5, stride=2, bias=False),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(count_linear_layer_map[count], 10)
-        ).to(device)
+    #     net = nn.Sequential(
+    #         nn.Conv2d(1, count, kernel_size=5, stride=2, bias=False),
+    #         nn.ReLU(),
+    #         nn.Flatten(),
+    #         nn.Linear(count_linear_layer_map[count], 10)
+    #     ).to(device)
 
-        with torch.no_grad():
-            for c in range(count):
-                uuid = np.random.choice(uuids, replace=True)
-                filter_choice_i = np.random.choice(16)
-                net[0].weight[c,:,:,:] = torch.load(f'../../filters/{uuid}')['0.weight'][filter_choice_i]
+    #     with torch.no_grad():
+    #         for c in range(count):
+    #             uuid = np.random.choice(uuids, replace=True)
+    #             filter_choice_i = np.random.choice(16)
+    #             net[0].weight[c,:,:,:] = torch.load(f'../../filters/{uuid}')['0.weight'][filter_choice_i]
 
-        optimizer = optim.Adadelta(net.parameters(), lr=lr)
+    #     optimizer = optim.Adadelta(net.parameters(), lr=lr)
 
-        # https://github.com/pytorch/examples/blob/main/mnist/main.py
+    #     # https://github.com/pytorch/examples/blob/main/mnist/main.py
 
-        net.train()
-        val_losses = []
-        val_accs = []
-        epoch = 0
-        while True:
+    #     net.train()
+    #     val_losses = []
+    #     val_accs = []
+    #     epoch = 0
+    #     while True:
             
-            net.train()
-            for layer in net[0:3]:
-                layer.requires_grad = False
-            net[3].requires_grad = True
-            print(f'Repetition {repetition+1} of {repetitions}, Count of filters {count}, Epoch {epoch+1} , {datetime.now() - start_training}')
-            # print(val_losses[-10:])
-            for batch_idx, (data, target) in enumerate(train_loader):
-                data, target = data.to(device), target.to(device)
-                optimizer.zero_grad()
-                output = net(data)
-                loss = F.nll_loss(output, target)
-                loss.backward()
-                optimizer.step()
+    #         net.train()
+    #         for layer in net[0:3]:
+    #             layer.requires_grad = False
+    #         net[3].requires_grad = True
+    #         print(f'Repetition {repetition+1} of {repetitions}, Count of filters {count}, Epoch {epoch+1} , {datetime.now() - start_training}')
+    #         # print(val_losses[-10:])
+    #         for batch_idx, (data, target) in enumerate(train_loader):
+    #             data, target = data.to(device), target.to(device)
+    #             optimizer.zero_grad()
+    #             output = net(data)
+    #             loss = F.nll_loss(output, target)
+    #             loss.backward()
+    #             optimizer.step()
 
-            net.eval()
-            num_correct, num_all, val_loss_l, val_acc = 0, 0, [], 0
-            with torch.no_grad():
-                for batch_idx, (data, target) in enumerate(val_loader):
-                    data, target = data.to(device), target.to(device)
-                    output = net(data)
-                    preds = output.argmax(dim=1)
-                    num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
-                    num_all += len(target)
-                    val_loss_l.append(F.nll_loss(output, target).cpu().numpy())
+    #         net.eval()
+    #         num_correct, num_all, val_loss_l, val_acc = 0, 0, [], 0
+    #         with torch.no_grad():
+    #             for batch_idx, (data, target) in enumerate(val_loader):
+    #                 data, target = data.to(device), target.to(device)
+    #                 output = net(data)
+    #                 preds = output.argmax(dim=1)
+    #                 num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
+    #                 num_all += len(target)
+    #                 val_loss_l.append(F.nll_loss(output, target).cpu().numpy())
 
-            val_accs.append(num_correct/num_all)
-            val_losses.append(logsumexp(val_loss_l))
+    #         val_accs.append(num_correct/num_all)
+    #         val_losses.append(logsumexp(val_loss_l))
 
-            print(val_accs[-10:])
+    #         print(val_accs[-10:])
 
-            if len(val_losses)>=25:
-                print(len(val_losses))
-                break
-            epoch += 1
+    #         if len(val_losses)>=25:
+    #             print(len(val_losses))
+    #             break
+    #         epoch += 1
 
 
-        # Final eval on Test
+    #     # Final eval on Test
 
-        net.eval()
-        num_correct, num_all, test_loss = 0, 0, 0
-        with torch.no_grad():
-            for batch_idx, (data, target) in enumerate(test_loader):
-                data, target = data.to(device), target.to(device)
-                output = net(data)
-                preds = output.argmax(dim=1)
-                num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
-                num_all += len(target)
-                test_loss += F.nll_loss(output, target)
+    #     net.eval()
+    #     num_correct, num_all, test_loss = 0, 0, 0
+    #     with torch.no_grad():
+    #         for batch_idx, (data, target) in enumerate(test_loader):
+    #             data, target = data.to(device), target.to(device)
+    #             output = net(data)
+    #             preds = output.argmax(dim=1)
+    #             num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
+    #             num_all += len(target)
+    #             test_loss += F.nll_loss(output, target)
 
-        acc = num_correct / num_all
-        print(acc)
-        test_loss = test_loss / num_all
-        baseline_performances[f'sample_filters_IID_{count}']['acc'].append(acc)
-        baseline_performances[f'sample_filters_IID_{count}']['loss'].append(test_loss)
+    #     acc = num_correct / num_all
+    #     print(acc)
+    #     test_loss = test_loss / num_all
+    #     baseline_performances[f'sample_filters_IID_{count}']['acc'].append(acc)
+    #     baseline_performances[f'sample_filters_IID_{count}']['loss'].append(test_loss)
 
-        with open('save_baselines.pickle', 'wb') as handle:
-            pickle.dump(baseline_performances, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    #     with open('save_baselines.pickle', 'wb') as handle:
+    #         pickle.dump(baseline_performances, handle, protocol=pickle.HIGHEST_PROTOCOL)
