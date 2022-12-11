@@ -30,9 +30,9 @@ mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int
 
 # Training params
 batch_size = 64
-epochs = 15
+epochs = 20
 lr = 1e-3
-repetitions = 100
+repetitions = 1
 
 train_loader = torch.utils.data.DataLoader(mnist_train,batch_size=batch_size, shuffle=True)
 val_loader = torch.utils.data.DataLoader(mnist_val,batch_size=batch_size)
@@ -41,44 +41,50 @@ if not os.path.exists('../filters'):
     os.makedirs('../filters')
 
 start_training = datetime.now()
-for repetition in range(repetitions):
+for hidden in [8]:
+    for repetition in range(repetitions):
 
-    net = nn.Sequential(
-        nn.Conv2d(1, 16, kernel_size=5, stride=2, bias=False),
-        nn.ReLU(),
-        nn.Flatten(),
-        nn.Linear(2304, 10)
-    ).to(device)
+        net = nn.Sequential(
+            nn.Conv2d(1, hidden, kernel_size=5, stride=2, bias=False),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(144*hidden, 10)
+        ).to(device)
 
-    optimizer = optim.Adadelta(net.parameters(), lr=lr)
+        optimizer = optim.Adadelta(net.parameters(), lr=lr)
 
-    # https://github.com/pytorch/examples/blob/main/mnist/main.py
+        # https://github.com/pytorch/examples/blob/main/mnist/main.py
 
-    net.train()
-    for epoch in range(epochs):
-        
         net.train()
-        print(f'Repetition {repetition+1} of {repetitions}, Epoch {epoch+1} of {epochs}, {datetime.now() - start_training}')
-        for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.to(device), target.to(device)
-            optimizer.zero_grad()
-            output = net(data)
-            loss = F.nll_loss(output, target)
-            loss.backward()
-            optimizer.step()
-
-
-        net.eval()
-        num_correct, num_all = 0, 0
-        with torch.no_grad():
-            for batch_idx, (data, target) in enumerate(val_loader):
+        for epoch in range(epochs):
+            
+            net.train()
+            print(f'Repetition {repetition+1} of {repetitions}, Epoch {epoch+1} of {epochs}, {datetime.now() - start_training}')
+            for batch_idx, (data, target) in enumerate(train_loader):
                 data, target = data.to(device), target.to(device)
+                optimizer.zero_grad()
                 output = net(data)
-                preds = output.argmax(dim=1)
-                num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
-                num_all += len(target)
+                loss = F.nll_loss(output, target)
+                loss.backward()
+                optimizer.step()
 
-        acc = num_correct / num_all
-        print(f'Accuracy Val: {round(acc, 4)}')
 
-    torch.save(net.to('cpu').state_dict(), '../filters/' + str(uuid4()))
+            net.eval()
+            num_correct, num_all = 0, 0
+            with torch.no_grad():
+                for batch_idx, (data, target) in enumerate(val_loader):
+                    data, target = data.to(device), target.to(device)
+                    output = net(data)
+                    preds = output.argmax(dim=1)
+                    num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
+                    num_all += len(target)
+
+            acc = num_correct / num_all
+            print(f'Accuracy Val: {round(acc, 4)}')
+
+            if (epoch + 1) % 5 == 0:
+                try:
+                    os.makedirs(f'../filters/{hidden}_{epoch}/')
+                except:
+                    pass
+                torch.save(net.state_dict(), f'../filters/{hidden}_{epoch}/{str(uuid4())}')
