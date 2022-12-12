@@ -1,4 +1,5 @@
-# Training params
+# https://github.com/pytorch/examples/blob/main/mnist/main.py
+
 from random import shuffle
 import uuid
 import pickle
@@ -16,7 +17,9 @@ import numpy as np
 from datetime import datetime
 
 datapath = os.path.join('..', 'data')
-filterpath = os.path.join(datapath, 'filters')
+filterpath = os.path.join(datapath, 'filters-final', '8_19')
+num_filters = 8
+savepath = 'save_baselines_sampled_iid_' + str(num_filters) + '.pickle'
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
@@ -33,17 +36,18 @@ mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int
 mnist_test = datasets.MNIST('../../data', train=False,
                     transform=mnist_transform)
 
-baseline_sample_counts = [16, 32, 64, 128, 256]
+baseline_sample_counts = [8, 16, 32, 64, 128, 256]
+
 baseline_performances = {
-    'random': {
+    'sample_IID': {
         'acc': [],
         'loss': []
     }
 }
 for count in baseline_sample_counts:
-    baseline_performances[f'random_{count}'] = {}
-    baseline_performances[f'random_{count}']['acc'] = []
-    baseline_performances[f'random_{count}']['loss'] = []
+    baseline_performances[f'sample_filters_IID_{count}'] = {}
+    baseline_performances[f'sample_filters_IID_{count}']['acc'] = []
+    baseline_performances[f'sample_filters_IID_{count}']['loss'] = []
 
 uuids = os.listdir(filterpath)
 
@@ -54,17 +58,48 @@ test_loader = torch.utils.data.DataLoader(mnist_test,batch_size=batch_size, shuf
 
 lr = 1e-1
 repetitions = 25
-
 count_linear_layer_map = {
-    16: 2304*(16//16),
-    32: 2304*(32//16),
-    64: 2304*(64//16),
-    128: 2304*(128//16),
-    256: 2304*(256//16),
+    8: int(2304*(8/16)),
+    16: int(2304*(16/16)),
+    32: int(2304*(32/16)),
+    64: int(2304*(64/16)),
+    128: int(2304*(128/16)),
+    256: int(2304*(256/16)),
 }
+
 
 start_training = datetime.now()
 for repetition in range(repetitions):
+
+    # Sample full baseline
+    uuid = np.random.choice(uuids, replace=True)
+
+    net = nn.Sequential(
+        nn.Conv2d(1, num_filters, kernel_size=5, stride=2, bias=False),
+        nn.ReLU(),
+        nn.Flatten(),
+        nn.Linear(int((2304*num_filters)/16), 10)
+    ).to(device)
+
+    net.load_state_dict(torch.load(os.path.join(filterpath, uuid)))
+
+    net.eval()
+    num_correct, num_all, test_loss = 0, 0, 0
+    with torch.no_grad():
+        for batch_idx, (data, target) in enumerate(test_loader):
+            data, target = data.to(device), target.to(device)
+            output = net(data)
+            preds = output.argmax(dim=1)
+            num_correct += np.count_nonzero(target.cpu().numpy() == preds.cpu().numpy())
+            num_all += len(target)
+            test_loss += F.nll_loss(output, target)
+
+    acc = num_correct / num_all
+    test_loss = test_loss / num_all
+    baseline_performances['sample_IID']['acc'].append(acc)
+    baseline_performances['sample_IID']['loss'].append(test_loss)
+    print(repetition+1, 'full', acc)
+
     for count in baseline_sample_counts:
         # Sample full baseline
 
@@ -77,7 +112,9 @@ for repetition in range(repetitions):
 
         with torch.no_grad():
             for c in range(count):
-                net[0].weight[c,:,:,:] =  torch.randn(5, 5).to(device)
+                uuid = np.random.choice(uuids, replace=True)
+                filter_choice_i = np.random.choice(num_filters)
+                net[0].weight[c,:,:,:] = torch.load(os.path.join(filterpath, uuid))['0.weight'][filter_choice_i]
 
         optimizer = optim.Adadelta(net.parameters(), lr=lr)
 
@@ -93,7 +130,7 @@ for repetition in range(repetitions):
                 layer.requires_grad = False
             net[3].requires_grad = True
             print(f'Repetition {repetition+1} of {repetitions}, Count of filters {count}, Epoch {epoch+1} , {datetime.now() - start_training}')
-
+        
             for batch_idx, (data, target) in enumerate(train_loader):
                 data, target = data.to(device), target.to(device)
                 optimizer.zero_grad()
@@ -141,8 +178,8 @@ for repetition in range(repetitions):
 
         acc = num_correct / num_all
         test_loss = test_loss / num_all
-        baseline_performances[f'random_{count}']['acc'].append(acc)
-        baseline_performances[f'random_{count}']['loss'].append(test_loss)
+        baseline_performances[f'sample_filters_IID_{count}']['acc'].append(acc)
+        baseline_performances[f'sample_filters_IID_{count}']['loss'].append(test_loss)
         print("RESULT", count, acc)
-        with open(os.path.join(datapath, 'save_baselines_random_file.pickle'), 'wb') as handle:
+        with open(os.path.join(datapath, savepath), 'wb') as handle:
             pickle.dump(baseline_performances, handle, protocol=pickle.HIGHEST_PROTOCOL)
