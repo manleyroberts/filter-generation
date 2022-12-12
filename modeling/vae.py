@@ -18,7 +18,6 @@ def get_dataset():
   weight_dataset = []
   for f, file in tqdm(enumerate(os.listdir(filterpath))):
     filter = torch.load(os.path.join(filterpath, file))
-    # import pdb; pdb.set_trace()
     for i in range(num_filters):
       weight_dataset.append(filter['0.weight'][i][0])
   return weight_dataset
@@ -127,11 +126,6 @@ def loss_function(loss, x, x_hat, mean, log_var, kl_weight):
     KLD      = - 0.5 * torch.sum(1+ log_var - mean.pow(2) - log_var.exp())
     
     return reproduction_loss + kl_weight * KLD
-
-
-optimizer = Adam(model.parameters(), lr=lr)
-
-model.train()
 
 
 optimizer = Adam(model.parameters(), lr=lr)

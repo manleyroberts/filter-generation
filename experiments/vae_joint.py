@@ -18,20 +18,20 @@ from datetime import datetime
 datapath = os.path.join('..', 'data')
 filterpath = os.path.join(datapath, 'filters-complete', '8_19')
 num_filters = 8
-loadpath = os.path.join(datapath, 'vae_' + str(num_filters) + '.pt')
-savepath = 'save_baselines_vae_' + str(num_filters) + '.pickle'
+loadpath = os.path.join(datapath, 'vae_joint_' + str(num_filters) + '.pt')
+savepath = 'save_baselines_vae_joint_' + str(num_filters) + '.pickle'
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
 
 vae_batch_size = 100
 
-x_dim  = 25
-hidden_dim1 = 20
-hidden_dim2 = 20
-hidden_dim3 = 20
-hidden_dim4 = 20
-latent_dim = 10
+x_dim  = 25*num_filters
+hidden_dim1 = 20*num_filters
+hidden_dim2 = 20*num_filters
+hidden_dim3 = 20*num_filters
+hidden_dim4 = 20*num_filters
+latent_dim = 10*num_filters
 
 """
     A simple implementation of Gaussian MLP Encoder and Decoder
@@ -109,11 +109,11 @@ class Model(nn.Module):
         
         return x_hat, mean, log_var
 
-
 encoder = Encoder(input_dim=x_dim, hidden_dim1=hidden_dim1, hidden_dim2=hidden_dim2, hidden_dim3=hidden_dim3, hidden_dim4=hidden_dim4, latent_dim=latent_dim)
 decoder = Decoder(latent_dim=latent_dim, hidden_dim1=hidden_dim1, hidden_dim2=hidden_dim2, hidden_dim3=hidden_dim3, hidden_dim4=hidden_dim4, output_dim = x_dim)
 
 model = Model(Encoder=encoder, Decoder=decoder).to(device)
+
 model.load_state_dict(torch.load(loadpath))
 
 model.eval()
@@ -129,20 +129,15 @@ mnist_train = datasets.MNIST('../../data', train=True, download=True,
 mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int(.1*len(mnist_train))], generator=torch.Generator().manual_seed(10708))
 mnist_test = datasets.MNIST('../../data', train=False,
                     transform=mnist_transform)
-                    
-baseline_sample_counts = [1, 2, 4, 6, 8, 16, 32]
 baseline_performances = {
-    'vae_IID': {
+    'vae_joint_IID': {
         'acc': [],
         'loss': []
     }
 }
-for count in baseline_sample_counts:
-    baseline_performances[f'vae_IID_{count}'] = {}
-    baseline_performances[f'vae_IID_{count}']['acc'] = []
-    baseline_performances[f'vae_IID_{count}']['loss'] = []
 
 uuids = os.listdir(filterpath)
+
 
 batch_size = 64
 train_loader = torch.utils.data.DataLoader(mnist_train,batch_size=batch_size, shuffle=True)
@@ -151,31 +146,24 @@ test_loader = torch.utils.data.DataLoader(mnist_test,batch_size=batch_size, shuf
 
 lr = 1e-1
 repetitions = 10
-count_linear_layer_map = {}
-for key in baseline_sample_counts:
-    count_linear_layer_map[key] = int(2304*(key/16))
 
-random_noise = False
 start_training = datetime.now()
 for repetition in range(repetitions):
-    for count in baseline_sample_counts:
         # Sample full baseline
 
         net = nn.Sequential(
-            nn.Conv2d(1, count, kernel_size=5, stride=2, bias=False),
+            nn.Conv2d(1, num_filters, kernel_size=5, stride=2, bias=False),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(count_linear_layer_map[count], 10)
+            nn.Linear(int(2304*(num_filters/16)), 10)
         ).to(device)
 
         with torch.no_grad():
-            for c in range(count):
-              if random_noise:
-                net[0].weight[c,:,:,:] =  torch.randn(5, 5).to(device)
-              else:
-                noise = torch.randn(1, latent_dim).to(device)
-                generated_filter = model.Decoder(noise)
-                net[0].weight[c,:,:,:] = generated_filter[0].view(5, 5).detach().clone()
+            noise = torch.randn(1, latent_dim).to(device)
+            generated_filter = model.Decoder(noise)
+
+            for c in range(num_filters):
+                net[0].weight[c,:,:,:] = generated_filter[0].view(8, 5, 5)[c].detach().clone()
 
         optimizer = optim.Adadelta(net.parameters(), lr=lr)
 
@@ -190,8 +178,7 @@ for repetition in range(repetitions):
             for layer in net[0:3]:
                 layer.requires_grad = False
             net[3].requires_grad = True
-            print(f'Repetition {repetition+1} of {repetitions}, Count of filters {count}, Epoch {epoch+1} , {datetime.now() - start_training}')
-
+            print(f'Repetition {repetition+1} of {repetitions}, Epoch {epoch+1} , {datetime.now() - start_training}')
             for batch_idx, (data, target) in enumerate(train_loader):
                 data, target = data.to(device), target.to(device)
                 optimizer.zero_grad()
@@ -239,8 +226,8 @@ for repetition in range(repetitions):
 
         acc = num_correct / num_all
         test_loss = test_loss / num_all
-        baseline_performances[f'vae_IID_{count}']['acc'].append(acc)
-        baseline_performances[f'vae_IID_{count}']['loss'].append(test_loss)
-        print("RESULT", count, acc)
+        baseline_performances[f'vae_joint_IID']['acc'].append(acc)
+        baseline_performances[f'vae_joint_IID']['loss'].append(test_loss)
+        print("RESULT", acc)
         with open(os.path.join(datapath, savepath), 'wb') as handle:
             pickle.dump(baseline_performances, handle, protocol=pickle.HIGHEST_PROTOCOL)

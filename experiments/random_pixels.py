@@ -16,7 +16,7 @@ import numpy as np
 from datetime import datetime
 
 datapath = os.path.join('..', 'data')
-filterpath = os.path.join(datapath, 'filters-final', '8_19')
+filterpath = os.path.join(datapath, 'filters-complete', '8_19')
 num_filters = 8
 savepath = 'save_baselines_random_' + str(num_filters) + '.pickle'
 
@@ -35,7 +35,7 @@ mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int
 mnist_test = datasets.MNIST('../../data', train=False,
                     transform=mnist_transform)
 
-baseline_sample_counts = [8, 16, 32, 64, 128, 256]
+baseline_sample_counts = [1, 2, 4, 6, 8, 16, 32]
 baseline_performances = {
     'random': {
         'acc': [],
@@ -55,16 +55,12 @@ val_loader = torch.utils.data.DataLoader(mnist_val,batch_size=batch_size, shuffl
 test_loader = torch.utils.data.DataLoader(mnist_test,batch_size=batch_size, shuffle=True)
 
 lr = 1e-1
-repetitions = 25
+repetitions = 10
+count_linear_layer_map = {}
+for key in baseline_sample_counts:
+    count_linear_layer_map[key] = int(2304*(key/16))
 
-count_linear_layer_map = {
-    8: int(2304*(8/16)),
-    16: int(2304*(16/16)),
-    32: int(2304*(32/16)),
-    64: int(2304*(64/16)),
-    128: int(2304*(128/16)),
-    256: int(2304*(256/16)),
-}
+vmin, vmax = -2.5, 2.5
 
 start_training = datetime.now()
 for repetition in range(repetitions):
@@ -80,6 +76,7 @@ for repetition in range(repetitions):
 
         with torch.no_grad():
             for c in range(count):
+                (vmin - vmax) * torch.rand(5, 5) + vmax
                 net[0].weight[c,:,:,:] =  torch.randn(5, 5).to(device)
 
         optimizer = optim.Adadelta(net.parameters(), lr=lr)
