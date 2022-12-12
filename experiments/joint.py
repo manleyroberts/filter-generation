@@ -17,7 +17,7 @@ import numpy as np
 from datetime import datetime
 
 datapath = os.path.join('..', 'data')
-filterpath = os.path.join(datapath, 'filters-final', '8_19')
+filterpath = os.path.join(datapath, 'filters-complete', '8_19')
 num_filters = 8
 savepath = 'save_baselines_joint_' + str(num_filters) + '.pickle'
 
