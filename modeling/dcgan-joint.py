@@ -44,6 +44,9 @@ datapath = os.path.join('..', 'data')
 fpath = os.path.join(datapath, 'filters')
 filterpath = os.path.join(fpath, '8_19')
 
+save_G = os.path.join(datapath, 'DCGAN_joint_generator' + '.pt')
+save_D = os.path.join(datapath, 'DCGAN_joint_discriminator' + '.pt')
+
 def get_dataset():
   weight_dataset = []
   for f, file in tqdm(enumerate(os.listdir(filterpath))):
@@ -333,8 +336,10 @@ for epoch in range(niter):
                     normalize=True)
 
     # do checkpointing
-    save_G = '%s/netG_epoch_%d.pth' % (outf, epoch)
-    # print(save_G)
-    torch.save(netG.state_dict(), save_G)
-    save_D = '%s/netD_epoch_%d.pth' % (outf, epoch)
-    torch.save(netD.state_dict(),  save_D)
+    # save_G = '%s/netG_epoch_%d.pth' % (outf, epoch)
+    # # print(save_G)
+    # torch.save(netG.state_dict(), save_G)
+    # save_D = '%s/netD_epoch_%d.pth' % (outf, epoch)
+    # torch.save(netD.state_dict(),  save_D)
+torch.save(netG.state_dict(), save_G)
+torch.save(netD.state_dict(),  save_D)

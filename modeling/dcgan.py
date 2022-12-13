@@ -16,10 +16,15 @@ from tqdm import tqdm
 # https://github.com/pytorch/examples/tree/main/dcgan
 
 
+datapath = os.path.join('..', 'data')
+filterpath = os.path.join(datapath, 'filters-final', '8_19')
+save_G = os.path.join(datapath, 'DCGAN_ind_generator' + '.pt')
+save_D = os.path.join(datapath, 'DCGAN_ind_discriminator' + '.pt')
+
 batchSize = 128         #', type=int, default=64, help='input batch size')
 imageSize = 5           #', type=int, default=64, help='the height / width of the input image to network')
 nz = 8                  #', type=int, default=100, help='size of the latent z vector')
-niter = 200             #', type=int, default=25, help='number of epochs to train for')
+niter = 1000             #', type=int, default=25, help='number of epochs to train for')
 lr = 0.00002            #', type=float, default=0.0002, help='learning rate, default=0.0002')
 beta1 = 0.5             #', type=float, default=0.5, help='beta1 for adam. default=0.5')
 ngpu =1                 #', type=int, default=1, help='number of GPUs to use')
@@ -40,11 +45,6 @@ random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
 cudnn.benchmark = True
-
-
-datapath = os.path.join('..', 'data')
-fpath = os.path.join(datapath, 'filters')
-filterpath = os.path.join(fpath, '8_19')
 
 def get_dataset():
   weight_dataset = []
@@ -208,8 +208,9 @@ for epoch in range(niter):
                     normalize=True)
 
     # do checkpointing
-    save_G = '%s/netG_epoch_%d.pth' % (outf, epoch)
-    # print(save_G)
-    torch.save(netG.state_dict(), save_G)
-    save_D = '%s/netD_epoch_%d.pth' % (outf, epoch)
-    torch.save(netD.state_dict(),  save_D)
+    # save_G = '%s/netG_epoch_%d.pth' % (outf, epoch)
+    # # print(save_G)
+    # torch.save(netG.state_dict(), save_G)
+    # save_D = '%s/netD_epoch_%d.pth' % (outf, epoch)
+torch.save(netG.state_dict(), save_G)
+torch.save(netD.state_dict(),  save_D)

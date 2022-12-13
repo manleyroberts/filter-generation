@@ -1,5 +1,4 @@
-# https://github.com/pytorch/examples/blob/main/mnist/main.py
-
+# Training params
 from random import shuffle
 import uuid
 import pickle
@@ -19,11 +18,64 @@ from datetime import datetime
 datapath = os.path.join('..', 'data')
 filterpath = os.path.join(datapath, 'filters-complete', '8_19')
 num_filters = 8
-savepath = 'save_baselines_joint_' + str(num_filters) + '.pickle'
-
+loadpath = os.path.join(datapath, 'DCGAN_joint_generator' + '.pt')
+savepath = 'save_baselines_dcgan_joint_' + str(num_filters) + '.pickle'
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
+
+nz=8
+ngpu=1
+netG_load = os.path.join(datapath, 'DCGAN_joint_generator' + '.pt')
+class Generator(nn.Module):
+    def __init__(self, ngpu):
+        super(Generator, self).__init__()
+        self.ngpu = ngpu
+
+        self.merged = nn.Sequential(
+            nn.Linear(nz, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(True),
+            nn.Linear(64, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(True),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(True),
+            nn.Linear(64, 4*8),
+        )
+        self.shared_weights = nn.Sequential(
+            nn.Linear(4, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(True),
+            nn.Linear(128, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(True),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(True),
+            nn.Linear(64, 25),
+        )
+
+    def forward(self, input):
+        if input.is_cuda and self.ngpu > 1:
+            output = nn.parallel.data_parallel(self.shared_weights, input, range(self.ngpu))
+        else:
+            output = self.merged(input.view(-1,nz))
+            
+            acts = []
+            for i  in range(8):
+                sliced = output[:,i*(4):(i+1)*(4)].view(-1,4)
+                sliced_output = self.shared_weights(sliced)
+                acts.append(sliced_output.view(-1,1,5,5))
+            output = torch.concat(acts, dim=1)
+
+        return output
+
+model = Generator(ngpu).to(device)
+model.load_state_dict(torch.load(netG_load))
+
+model.eval()
 
 mnist_mean, mnist_std = (0.1307,), (0.3081,)
 mnist_transform=transforms.Compose([
@@ -36,10 +88,8 @@ mnist_train = datasets.MNIST('../../data', train=True, download=True,
 mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int(.1*len(mnist_train))], generator=torch.Generator().manual_seed(10708))
 mnist_test = datasets.MNIST('../../data', train=False,
                     transform=mnist_transform)
-
-
 baseline_performances = {
-    'joint_IID': {
+    'dcgan_joint_IID': {
         'acc': [],
         'loss': []
     }
@@ -54,12 +104,12 @@ val_loader = torch.utils.data.DataLoader(mnist_val,batch_size=batch_size, shuffl
 test_loader = torch.utils.data.DataLoader(mnist_test,batch_size=batch_size, shuffle=True)
 
 lr = 1e-1
-repetitions = 25
-
+repetitions = 10
 
 start_training = datetime.now()
 for repetition in range(repetitions):
         # Sample full baseline
+
         net = nn.Sequential(
             nn.Conv2d(1, num_filters, kernel_size=5, stride=2, bias=False),
             nn.ReLU(),
@@ -68,8 +118,12 @@ for repetition in range(repetitions):
         ).to(device)
 
         with torch.no_grad():
-            uuid = np.random.choice(uuids, replace=True)
-            net[0].weight = nn.Parameter(torch.load(os.path.join(filterpath, uuid), map_location=device)['0.weight'])
+            noise = torch.randn(1, nz, device=device)
+            fake = model(noise)
+
+            for c in range(num_filters):
+                net[0].weight[c,:,:,:] = fake[0, c].detach().reshape(5,5)
+
         optimizer = optim.Adadelta(net.parameters(), lr=lr)
 
         # https://github.com/pytorch/examples/blob/main/mnist/main.py
@@ -78,7 +132,7 @@ for repetition in range(repetitions):
         val_losses = []
         val_accs = []
         epoch = 0
-        while True:            
+        while True:
             net.train()
             for layer in net[0:3]:
                 layer.requires_grad = False
@@ -131,8 +185,8 @@ for repetition in range(repetitions):
 
         acc = num_correct / num_all
         test_loss = test_loss / num_all
-        baseline_performances[f'joint_IID']['acc'].append(acc)
-        baseline_performances[f'joint_IID']['loss'].append(test_loss)
+        baseline_performances[f'dcgan_joint_IID']['acc'].append(acc)
+        baseline_performances[f'dcgan_joint_IID']['loss'].append(test_loss)
         print("RESULT", acc)
         with open(os.path.join(datapath, savepath), 'wb') as handle:
             pickle.dump(baseline_performances, handle, protocol=pickle.HIGHEST_PROTOCOL)
