@@ -15,13 +15,20 @@ from scipy.special import logsumexp
 import numpy as np
 from datetime import datetime
 
-datapath = os.path.join('..', 'data')
-filterpath = os.path.join(datapath, 'filters-complete', '8_19')
+# datapath = os.path.join('..', 'data')
+# filterpath = os.path.join(datapath, 'filters-complete', '8_19')
+datapath = os.path.join('../', 'data')
+filterpath = os.path.join(datapath, '8_19')
+
 num_filters = 8
 loadpath = os.path.join(datapath, 'vae_joint_' + str(num_filters) + '.pt')
 savepath = 'save_baselines_vae_joint_' + str(num_filters) + '.pickle'
 
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+datapath = os.path.join('../', 'data')
+filterpath = os.path.join(datapath, '8_19')
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="0,1"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 print(device)
 
 vae_batch_size = 100
@@ -115,7 +122,7 @@ decoder = Decoder(latent_dim=latent_dim, hidden_dim1=hidden_dim1, hidden_dim2=hi
 model = Model(Encoder=encoder, Decoder=decoder).to(device)
 
 model.load_state_dict(torch.load(loadpath))
-
+print(model)
 model.eval()
 
 mnist_mean, mnist_std = (0.1307,), (0.3081,)

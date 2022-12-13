@@ -15,13 +15,17 @@ from scipy.special import logsumexp
 import numpy as np
 from datetime import datetime
 
-datapath = os.path.join('..', 'data')
-filterpath = os.path.join(datapath, 'filters-complete', '8_19')
+# datapath = os.path.join('..', 'data')
+# filterpath = os.path.join(datapath, 'filters-complete', '8_19')
+datapath = os.path.join('../', 'data')
+filterpath = os.path.join(datapath, '8_19')
 num_filters = 8
 loadpath = os.path.join(datapath, 'vae_' + str(num_filters) + '.pt')
 savepath = 'save_baselines_vae_' + str(num_filters) + '.pickle'
 
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="0,1"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 print(device)
 
 vae_batch_size = 100
@@ -130,7 +134,8 @@ mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int
 mnist_test = datasets.MNIST('../../data', train=False,
                     transform=mnist_transform)
                     
-baseline_sample_counts = [1, 2, 4, 6, 8, 16, 32]
+# baseline_sample_counts = [1, 2, 4, 6, 8, 16, 32]
+baseline_sample_counts = [8]
 baseline_performances = {
     'vae_IID': {
         'acc': [],

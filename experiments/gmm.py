@@ -24,13 +24,18 @@ from tqdm import tqdm
 import numpy as np
 from sklearn.mixture import GaussianMixture
 
-datapath = os.path.join('..', 'data')
-filterpath = os.path.join(datapath, 'filters-complete', '8_19')
+# datapath = os.path.join('..', 'data')
+# filterpath = os.path.join(datapath, 'filters-complete', '8_19')
+datapath = os.path.join('../', 'data')
+filterpath = os.path.join(datapath, '8_19')
 num_filters = 8
 
 savepath = 'save_baselines_gmm_' + str(num_filters) + '.pickle'
 
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="3,4"
+device = "cuda" if torch.cuda.is_available() else "cpu"
+# device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
 
 def get_dataset():
@@ -61,7 +66,9 @@ mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int
 mnist_test = datasets.MNIST('../../data', train=False,
                     transform=mnist_transform)
                     
-baseline_sample_counts = [1, 2, 4, 6, 8, 16, 32]
+# baseline_sample_counts = [1, 2, 4, 6, 8, 16, 32]
+baseline_sample_counts = [8]
+
 baseline_performances = {
     'gmm_IID': {
         'acc': [],
