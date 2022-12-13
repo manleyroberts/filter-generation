@@ -18,10 +18,46 @@ from datetime import datetime
 datapath = os.path.join('..', 'data')
 filterpath = os.path.join(datapath, 'filters-complete', '8_19')
 num_filters = 8
-savepath = 'save_baselines_random_' + str(num_filters) + '.pickle'
+
+savepath = 'save_baselines_dcgan_' + str(num_filters) + '.pickle'
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
+
+nz=8
+ngpu=1
+netG_load = os.path.join(datapath, 'DCGAN_ind_generator' + '.pt')
+class Generator(nn.Module):
+    def __init__(self, ngpu):
+        super(Generator, self).__init__()
+        self.ngpu = ngpu
+        self.main = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(nz, 64),
+            nn.BatchNorm1d(64),
+            nn.Tanh(),
+            nn.Linear(64, 128),
+            nn.BatchNorm1d(128),
+            nn.Tanh(),
+            nn.Linear(128, 128),
+            nn.BatchNorm1d(128),
+            nn.Tanh(),
+            nn.Linear(128, 25),
+            # EDITED
+        )
+
+    def forward(self, input):
+        if input.is_cuda and self.ngpu > 1:
+            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+        else:
+            output = self.main(input)
+        return output
+
+
+model = Generator(ngpu).to(device)
+model.load_state_dict(torch.load(netG_load))
+
+model.eval()
 
 mnist_mean, mnist_std = (0.1307,), (0.3081,)
 mnist_transform=transforms.Compose([
@@ -34,18 +70,18 @@ mnist_train = datasets.MNIST('../../data', train=True, download=True,
 mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int(.1*len(mnist_train))], generator=torch.Generator().manual_seed(10708))
 mnist_test = datasets.MNIST('../../data', train=False,
                     transform=mnist_transform)
-
+                    
 baseline_sample_counts = [1, 2, 4, 6, 8, 16, 32]
 baseline_performances = {
-    'random': {
+    'dcgan_IID': {
         'acc': [],
         'loss': []
     }
 }
 for count in baseline_sample_counts:
-    baseline_performances[f'random_{count}'] = {}
-    baseline_performances[f'random_{count}']['acc'] = []
-    baseline_performances[f'random_{count}']['loss'] = []
+    baseline_performances[f'dcgan_IID_{count}'] = {}
+    baseline_performances[f'dcgan_IID_{count}']['acc'] = []
+    baseline_performances[f'dcgan_IID_{count}']['loss'] = []
 
 uuids = os.listdir(filterpath)
 
@@ -60,8 +96,7 @@ count_linear_layer_map = {}
 for key in baseline_sample_counts:
     count_linear_layer_map[key] = int(2304*(key/16))
 
-vmin, vmax = -2.5, 2.5
-
+random_noise = False
 start_training = datetime.now()
 for repetition in range(repetitions):
     for count in baseline_sample_counts:
@@ -75,9 +110,10 @@ for repetition in range(repetitions):
         ).to(device)
 
         with torch.no_grad():
+            noise = torch.randn(8, nz, 1, 1, device=device)
+            fake = model(noise)
             for c in range(count):
-                val = (vmin - vmax) * torch.rand(5, 5) + vmax
-                net[0].weight[c,:,:,:] =  torch.Tensor(val).to(device)
+                net[0].weight[c,:,:,:] = fake[c].detach().reshape(5,5)
 
         optimizer = optim.Adadelta(net.parameters(), lr=lr)
 
@@ -141,8 +177,8 @@ for repetition in range(repetitions):
 
         acc = num_correct / num_all
         test_loss = test_loss / num_all
-        baseline_performances[f'random_{count}']['acc'].append(acc)
-        baseline_performances[f'random_{count}']['loss'].append(test_loss)
+        baseline_performances[f'dcgan_IID_{count}']['acc'].append(acc)
+        baseline_performances[f'dcgan_IID_{count}']['loss'].append(test_loss)
         print("RESULT", count, acc)
         with open(os.path.join(datapath, savepath), 'wb') as handle:
             pickle.dump(baseline_performances, handle, protocol=pickle.HIGHEST_PROTOCOL)

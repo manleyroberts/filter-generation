@@ -14,14 +14,40 @@ from scipy.special import logsumexp
 
 import numpy as np
 from datetime import datetime
+import torch
+import os
+from tqdm import tqdm
+from torch.utils.data import Dataset, DataLoader
+
+from tqdm import tqdm
+
+import numpy as np
+from sklearn.mixture import GaussianMixture
 
 datapath = os.path.join('..', 'data')
 filterpath = os.path.join(datapath, 'filters-complete', '8_19')
 num_filters = 8
-savepath = 'save_baselines_random_' + str(num_filters) + '.pickle'
+
+savepath = 'save_baselines_gmm_' + str(num_filters) + '.pickle'
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print(device)
+
+def get_dataset():
+  weight_dataset = []
+  for f, file in tqdm(enumerate(os.listdir(filterpath))):
+    filter = torch.load(os.path.join(filterpath, file), map_location=torch.device('cpu'))
+    for i in range(8):
+      weight_dataset.append(filter['0.weight'][i][0])
+  return weight_dataset
+
+num_images = len(os.listdir(filterpath))
+dataset = get_dataset()
+dataset = torch.stack(dataset, dim=0).view(-1,25)
+
+X = dataset.detach().clone().numpy()
+
+gmm = GaussianMixture(n_components=2).fit(X)
 
 mnist_mean, mnist_std = (0.1307,), (0.3081,)
 mnist_transform=transforms.Compose([
@@ -34,18 +60,18 @@ mnist_train = datasets.MNIST('../../data', train=True, download=True,
 mnist_train, mnist_val = random_split(mnist_train, [int(.9*len(mnist_train)),int(.1*len(mnist_train))], generator=torch.Generator().manual_seed(10708))
 mnist_test = datasets.MNIST('../../data', train=False,
                     transform=mnist_transform)
-
+                    
 baseline_sample_counts = [1, 2, 4, 6, 8, 16, 32]
 baseline_performances = {
-    'random': {
+    'gmm_IID': {
         'acc': [],
         'loss': []
     }
 }
 for count in baseline_sample_counts:
-    baseline_performances[f'random_{count}'] = {}
-    baseline_performances[f'random_{count}']['acc'] = []
-    baseline_performances[f'random_{count}']['loss'] = []
+    baseline_performances[f'gmm_IID_{count}'] = {}
+    baseline_performances[f'gmm_IID_{count}']['acc'] = []
+    baseline_performances[f'gmm_IID_{count}']['loss'] = []
 
 uuids = os.listdir(filterpath)
 
@@ -60,8 +86,7 @@ count_linear_layer_map = {}
 for key in baseline_sample_counts:
     count_linear_layer_map[key] = int(2304*(key/16))
 
-vmin, vmax = -2.5, 2.5
-
+random_noise = False
 start_training = datetime.now()
 for repetition in range(repetitions):
     for count in baseline_sample_counts:
@@ -75,9 +100,13 @@ for repetition in range(repetitions):
         ).to(device)
 
         with torch.no_grad():
+            filter = gmm.sample(count)
+            # print("orig filter shape", filter[0].shape)
             for c in range(count):
-                val = (vmin - vmax) * torch.rand(5, 5) + vmax
-                net[0].weight[c,:,:,:] =  torch.Tensor(val).to(device)
+                # print("orig shape", filter[0].shape)
+                # print("new shape", np.reshape(filter, (1, c, 5, 5)).shape)
+                print(filter[0].shape)
+                net[0].weight[c,:,:,:] = torch.Tensor(np.reshape(filter[0][c], ( 5, 5))).to(device)
 
         optimizer = optim.Adadelta(net.parameters(), lr=lr)
 
@@ -141,8 +170,8 @@ for repetition in range(repetitions):
 
         acc = num_correct / num_all
         test_loss = test_loss / num_all
-        baseline_performances[f'random_{count}']['acc'].append(acc)
-        baseline_performances[f'random_{count}']['loss'].append(test_loss)
+        baseline_performances[f'gmm_IID_{count}']['acc'].append(acc)
+        baseline_performances[f'gmm_IID_{count}']['loss'].append(test_loss)
         print("RESULT", count, acc)
         with open(os.path.join(datapath, savepath), 'wb') as handle:
             pickle.dump(baseline_performances, handle, protocol=pickle.HIGHEST_PROTOCOL)
